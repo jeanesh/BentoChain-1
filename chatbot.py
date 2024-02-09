@@ -8,10 +8,27 @@ from langchain.agents import load_tools, initialize_agent, AgentType
 from langchain.memory import ConversationBufferMemory
 from langchain.llms import OpenAI
 from threading import Lock
+import time 
 
 
 PLAYBACK_SAMPLE_RATE = 16000
 
+def generate_speech_from_text(self, text_message: str):
+    """Generate speech from text."""
+    self.lock.acquire()
+    try:
+        if text_message:
+                
+            start_time = time.time()  # Capture start time
+            speech_data = self.generate_speech(text_message)
+            end_time = time.time()  # Capture end time
+            latency = end_time - start_time  # Calculate latency
+            print(f"Latency: {latency} seconds")  # Print or return the latency as needed
+            return speech_data, latency
+    except Exception as e:
+        raise e
+    finally:
+        self.lock.release()
 
 def load_chain():
     """Logic for loading the chain you want to use should go here."""
@@ -36,7 +53,7 @@ def set_openai_api_key(api_key: str):
     if api_key:
         os.environ["OPENAI_API_KEY"] = api_key
         chain = load_chain()
-        os.environ["OPENAI_API_KEY"] = ""
+        os.environ["OPENAI_API_KEY"] = "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"
         return chain
 
 
@@ -87,18 +104,18 @@ class ChatWrapper:
             if transcription is not None:
                 history = history or []
                 # If chain is None, that is because no API key was provided.
-                if chain is None:
-                    response = "Please paste your Open AI key."
-                    history.append((transcription, response))
-                    speech = (PLAYBACK_SAMPLE_RATE, self.generate_speech(response))
-                    return history, history, speech, None, None
+                
+                response = transcription
+                history.append((transcription, response))
+                speech = (PLAYBACK_SAMPLE_RATE, self.generate_speech(response))
+                return history, history, speech, None, None
                 # Set OpenAI key
                 import openai
 
                 openai.api_key = api_key
                 # Run chain and append input.
                 output = chain.run(input=transcription)
-                speech = (PLAYBACK_SAMPLE_RATE, self.generate_speech(output))
+                xx = (PLAYBACK_SAMPLE_RATE, self.generate_speech(output))
                 history.append((transcription, output))
 
         except Exception as e:
@@ -117,7 +134,7 @@ def create_block(chat: ChatWrapper):
         with gr.Row():
             gr.Markdown("<h3><center>BentoML LangChain Demo</center></h3>")
 
-            openai_api_key_textbox = gr.Textbox(
+            inputTextbox = gr.Textbox(
                 placeholder="Paste your OpenAI API key (sk-...)",
                 show_label=False,
                 lines=1,
@@ -152,7 +169,7 @@ def create_block(chat: ChatWrapper):
         audio_message.change(
             chat,
             inputs=[
-                openai_api_key_textbox,
+                inputTextbox,
                 audio_message,
                 text_message,
                 state,
@@ -165,7 +182,7 @@ def create_block(chat: ChatWrapper):
         text_message.submit(
             chat,
             inputs=[
-                openai_api_key_textbox,
+                inputTextbox,
                 audio_message,
                 text_message,
                 state,
@@ -175,11 +192,19 @@ def create_block(chat: ChatWrapper):
             show_progress=False,
         )
 
-        openai_api_key_textbox.change(
-            set_openai_api_key,
-            inputs=[openai_api_key_textbox],
+        def handle_text_input(text_input):
+            # Call the method to generate speech from text
+            speech_data, latency = chat.generate_speech_from_text(text_input)
+            # Return values needed to update the UI components
+            return speech_data, None, f"Latency: {latency} seconds"
+
+        inputTextbox.change(
+            #set_openai_api_key,
+            fn=handle_text_input,
+            inputs=[inputTextbox],
             outputs=[agent_state],
             show_progress=False,
         )
 
         return block
+
